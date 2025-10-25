@@ -10,7 +10,8 @@
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate dev",
     "db:seed": "tsx prisma/seed.ts",
-    "db:studio": "prisma studio"
+    "db:studio": "prisma studio",
+    "test:trading": "tsx scripts/test-trading.ts"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"
@@ -18,7 +19,9 @@
   "dependencies": {
     "@anthropic-ai/sdk": "^0.67.0",
     "@google/generative-ai": "^0.24.1",
+    "@openrouter/ai-sdk-provider": "^1.2.0",
     "@prisma/client": "^6.18.0",
+    "ai": "^5.0.78",
     "date-fns": "^4.1.0",
     "dotenv": "^17.2.3",
     "kiteconnect": "^5.1.0",

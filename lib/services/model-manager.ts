@@ -2,6 +2,7 @@ import { prisma } from '@/lib/db/prisma';
 import { callGemini } from '@/lib/llm/providers/gemini';
 import { callOpenAI } from '@/lib/llm/providers/openai';
 import { callClaude } from '@/lib/llm/providers/claude';
+import { callOpenRouter } from '@/lib/llm/providers/openrouter';
 import { buildTradingPrompt } from '@/lib/llm/prompt-builder';
 import { parseTradeDecision, type TradeDecision } from '@/lib/llm/response-parser';
 import type { MarketDataPoint, NewsArticle } from '@/lib/types';
@@ -78,6 +79,21 @@ export class ModelManager {
             break;
           case 'CLAUDE_OPUS':
             rawResponse = await callClaude(prompt, 'claude-3-opus-20240229');
+            break;
+          case 'OPENROUTER_CLAUDE':
+            rawResponse = await callOpenRouter(prompt, 'anthropic/claude-3.5-sonnet');
+            break;
+          case 'OPENROUTER_GPT4':
+            rawResponse = await callOpenRouter(prompt, 'openai/gpt-4-turbo');
+            break;
+          case 'OPENROUTER_GEMINI':
+            rawResponse = await callOpenRouter(prompt, 'google/gemini-pro-1.5');
+            break;
+          case 'OPENROUTER_LLAMA':
+            rawResponse = await callOpenRouter(prompt, 'meta-llama/llama-3.1-70b-instruct');
+            break;
+          case 'OPENROUTER_MISTRAL':
+            rawResponse = await callOpenRouter(prompt, 'mistralai/mistral-large');
             break;
           default:
             throw new Error(`Unknown provider: ${model.provider}`);

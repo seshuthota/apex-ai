@@ -36,6 +36,12 @@ async function main() {
       provider: 'CLAUDE_SONNET' as const,
       isActive: true,
     },
+    {
+      name: 'openrouter-llama-trader',
+      displayName: 'Llama 3.1 Trader (OpenRouter)',
+      provider: 'OPENROUTER_LLAMA' as const,
+      isActive: true,
+    },
   ];
 
   for (const modelData of models) {

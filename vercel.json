@@ -1,0 +1,8 @@
+{
+  "crons": [
+    {
+      "path": "/api/cron/trigger-trades",
+      "schedule": "*/30 9-15 * * 1-5"
+    }
+  ]
+}
