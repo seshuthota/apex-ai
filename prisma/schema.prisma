@@ -1,0 +1,182 @@
+// Apex AI - NSE Trading Competition Platform
+// Database Schema for LLM Trading Models
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// Model - Represents each LLM trader
+model Model {
+  id            String       @id @default(cuid())
+  name          String       @unique // "AlphaWhale"
+  displayName   String       // "Alpha Whale"
+  provider      LLMProvider  // GEMINI_PRO, GPT4, CLAUDE_SONNET
+  logo          String?      // URL to logo
+  isActive      Boolean      @default(true)
+  
+  portfolio     Portfolio?
+  trades        Trade[]
+  decisions     DecisionLog[]
+  config        ModelConfig?
+  
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+}
+
+enum LLMProvider {
+  GEMINI_PRO
+  GEMINI_FLASH
+  GPT4
+  GPT4_TURBO
+  CLAUDE_SONNET
+  CLAUDE_OPUS
+}
+
+// Portfolio - Current holdings and cash
+model Portfolio {
+  id            String     @id @default(cuid())
+  modelId       String     @unique
+  model         Model      @relation(fields: [modelId], references: [id])
+  
+  cashBalance   Decimal    @default(100000) @db.Decimal(15, 2)
+  initialValue  Decimal    @default(100000) @db.Decimal(15, 2)
+  
+  positions     Position[]
+  history       PortfolioSnapshot[]
+  
+  updatedAt     DateTime   @updatedAt
+}
+
+// Position - Individual stock holdings
+model Position {
+  id            String     @id @default(cuid())
+  portfolioId   String
+  portfolio     Portfolio  @relation(fields: [portfolioId], references: [id])
+  
+  ticker        String
+  shares        Int
+  avgCost       Decimal    @db.Decimal(15, 2)
+  
+  @@unique([portfolioId, ticker])
+}
+
+// Trade - Transaction history
+model Trade {
+  id            String      @id @default(cuid())
+  modelId       String
+  model         Model       @relation(fields: [modelId], references: [id])
+  
+  ticker        String
+  action        TradeAction // BUY, SELL
+  shares        Int
+  price         Decimal     @db.Decimal(15, 2)
+  totalValue    Decimal     @db.Decimal(15, 2)
+  
+  status        TradeStatus @default(PENDING)
+  brokerOrderId String?
+  
+  createdAt     DateTime    @default(now())
+  executedAt    DateTime?
+  
+  @@index([modelId, createdAt])
+}
+
+enum TradeAction {
+  BUY
+  SELL
+}
+
+enum TradeStatus {
+  PENDING
+  FILLED
+  REJECTED
+  CANCELLED
+}
+
+// DecisionLog - LLM reasoning
+model DecisionLog {
+  id              String     @id @default(cuid())
+  modelId         String
+  model           Model      @relation(fields: [modelId], references: [id])
+  
+  reasoning       String     @db.Text
+  rawResponse     String     @db.Text
+  promptTokens    Int?
+  responseTokens  Int?
+  
+  tradeId         String?
+  
+  createdAt       DateTime   @default(now())
+  
+  @@index([modelId, createdAt])
+}
+
+// PortfolioSnapshot - Historical valuations
+model PortfolioSnapshot {
+  id              String     @id @default(cuid())
+  portfolioId     String
+  portfolio       Portfolio  @relation(fields: [portfolioId], references: [id])
+  
+  totalValue      Decimal    @db.Decimal(15, 2)
+  cashBalance     Decimal    @db.Decimal(15, 2)
+  positionsValue  Decimal    @db.Decimal(15, 2)
+  returnPct       Decimal    @db.Decimal(10, 4)
+  
+  timestamp       DateTime   @default(now())
+  
+  @@index([portfolioId, timestamp])
+}
+
+// ModelConfig - Versioned prompt configurations
+model ModelConfig {
+  id              String     @id @default(cuid())
+  modelId         String     @unique
+  model           Model      @relation(fields: [modelId], references: [id])
+  
+  systemPrompt    String     @db.Text
+  temperature     Decimal    @default(0.7) @db.Decimal(3, 2)
+  maxTokens       Int        @default(1000)
+  
+  // Risk limits
+  maxPositionSize Decimal    @default(0.3) @db.Decimal(3, 2)
+  maxTradesPerDay Int        @default(10)
+  watchlist       String[]   // Array of NSE tickers
+  
+  version         Int        @default(1)
+  updatedAt       DateTime   @updatedAt
+}
+
+// MarketData - Cached price data
+model MarketData {
+  ticker          String
+  price           Decimal    @db.Decimal(15, 2)
+  change          Decimal    @db.Decimal(15, 2)
+  changePct       Decimal    @db.Decimal(10, 4)
+  volume          BigInt
+  timestamp       DateTime
+  
+  @@id([ticker, timestamp])
+  @@index([ticker])
+}
+
+// SystemLog - Operational monitoring
+model SystemLog {
+  id              String     @id @default(cuid())
+  level           LogLevel
+  message         String     @db.Text
+  metadata        Json?
+  timestamp       DateTime   @default(now())
+  
+  @@index([level, timestamp])
+}
+
+enum LogLevel {
+  INFO
+  WARN
+  ERROR
+}
