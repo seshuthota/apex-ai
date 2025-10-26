@@ -24,14 +24,26 @@ async function main() {
   console.log('1️⃣  Checking API keys...');
   const checks = {
     openrouter: !!process.env.OPENROUTER_API_KEY,
-    kite: !!(process.env.KITE_API_KEY && process.env.KITE_ACCESS_TOKEN),
-    zerodha: !!(process.env.ZERODHA_API_KEY && process.env.ZERODHA_ACCESS_TOKEN),
+    zerodhaPrimary: !!(
+      process.env.ZERODHA_API_KEY && process.env.ZERODHA_ACCESS_TOKEN
+    ),
+    zerodhaLegacy: !!(
+      process.env.KITE_API_KEY && process.env.KITE_ACCESS_TOKEN
+    ),
     news: !!process.env.NEWS_API_KEY,
   };
+  const brokerConfigured = checks.zerodhaPrimary || checks.zerodhaLegacy;
 
   console.log(`   OpenRouter: ${checks.openrouter ? '✅' : '❌'} ${checks.openrouter ? 'Configured' : 'Missing'}`);
-  console.log(`   Kite Connect: ${checks.kite ? '✅' : '❌'} ${checks.kite ? 'Configured' : 'Missing'}`);
-  console.log(`   Zerodha: ${checks.zerodha ? '✅' : '❌'} ${checks.zerodha ? 'Configured' : 'Will use Yahoo fallback'}`);
+  console.log(
+    `   Zerodha: ${brokerConfigured ? '✅' : '❌'} ${
+      checks.zerodhaPrimary
+        ? 'Configured (ZERODHA_* env vars)'
+        : checks.zerodhaLegacy
+          ? 'Configured via legacy KITE_* env vars'
+          : 'Missing — will use Yahoo fallback'
+    }`,
+  );
   console.log(`   NewsAPI: ${checks.news ? '✅' : '❌'} ${checks.news ? 'Configured' : 'Optional'}`);
 
   if (!checks.openrouter) {

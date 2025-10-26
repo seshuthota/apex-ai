@@ -1,13 +1,20 @@
+import { logger } from '@/lib/logging/logger';
+
 export interface EventPublisher {
   publish(type: string, payload: unknown): void;
   close?(): void;
 }
 
 export class ConsolePublisher implements EventPublisher {
+  private readonly log = logger.child({ source: 'publisher' });
+
   publish(type: string, payload: unknown): void {
-    console.log(`[${type.toUpperCase()}]`, JSON.stringify(payload));
+    this.log.info(`event:${type}`, { payload });
   }
-  close() {}
+
+  close(): void {
+    this.log.info('event:end');
+  }
 }
 
 export class SsePublisher implements EventPublisher {
@@ -20,7 +27,7 @@ export class SsePublisher implements EventPublisher {
     const chunk = `event: ${type}\n` + `data: ${data}\n\n`;
     this.write(chunk);
   }
-  close() {
+  close(): void {
     this.write('event: end\n' + 'data: {}\n\n');
   }
 }

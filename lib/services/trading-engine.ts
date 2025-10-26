@@ -15,6 +15,7 @@ import { PortfolioCalculator } from './portfolio-calculator';
 import type { TradeDecision } from '@/lib/types';
 import type { BrokerOrderResult, IBrokerService, IDataService } from '@/lib/types';
 import type { EventPublisher } from '@/lib/backtest/publisher';
+import { logger, StructuredLogger } from '@/lib/logging/logger';
 
 // ANSI color helpers for concise, readable logs in TTY
 const useColors = typeof process !== 'undefined' && process.stdout && process.stdout.isTTY;
@@ -37,11 +38,16 @@ export class TradingEngine {
   private useMockData: boolean;
   private publisher?: EventPublisher;
   private currentRunId?: string;
+  private log: StructuredLogger;
 
   constructor(options: TradingEngineOptions) {
     this.dataService = options.dataService;
     this.brokerService = options.brokerService;
     this.useMockData = options.useMockData || false;
+    this.log = logger.child({
+      source: 'trading-engine',
+      mode: this.useMockData ? 'mock' : 'live',
+    });
     
     this.modelManager = new ModelManager();
     this.portfolioCalc = new PortfolioCalculator(this.dataService);
@@ -55,6 +61,11 @@ export class TradingEngine {
 
   setRunContext(runId?: string) {
     this.currentRunId = runId;
+    this.log = logger.child({
+      source: 'trading-engine',
+      mode: this.useMockData ? 'mock' : 'live',
+      ...(runId ? { runId } : {}),
+    });
     this.modelManager.setRunContext(runId);
   }
 
@@ -108,7 +119,10 @@ export class TradingEngine {
           await this.processModel(model.id, marketData, options?.simulatedTime);
           processed++;
         } catch (error) {
-          console.error(`Error processing model ${model.displayName}:`, error instanceof Error ? error.message : String(error));
+          this.log.error(`Model processing failed: ${model.displayName}`, {
+            modelId: model.id,
+            error: error instanceof Error ? error.message : String(error),
+          });
           errors++;
           
           await this.logSystemEvent('ERROR', `Failed to process model ${model.name}`, {
@@ -133,8 +147,10 @@ export class TradingEngine {
         errors,
       };
     } catch (error) {
-      console.error('❌ FATAL: Trading cycle failed:', error);
-      
+      this.log.error('Trading cycle failed', {
+        error: error instanceof Error ? error.message : String(error),
+      });
+
       await this.logSystemEvent('ERROR', 'Trading cycle failed', {
         error: error instanceof Error ? error.message : String(error),
       });
@@ -248,7 +264,18 @@ export class TradingEngine {
         line += ` | Cash ₹${cash.toLocaleString('en-IN', { maximumFractionDigits: 0 })}`;
         line += ` | Value ₹${totalValue.toLocaleString('en-IN', { maximumFractionDigits: 0 })}`;
         line += ` | Positions: ${updatedModel.portfolio.positions.map(p => `${p.shares} ${p.ticker}`).join(', ') || 'None'}`;
-        console.log(line);
+        this.log.info(line, {
+          event: 'trade',
+          modelId: model.id,
+          modelName: model.displayName,
+          action: decision.action,
+          ticker: decision.ticker,
+          shares: decision.shares,
+          filledPrice: exec.filledPrice,
+          cash,
+          totalValue,
+          runId: this.currentRunId,
+        });
 
         if (exec.status === 'FILLED' && exec.tradeId) {
           await prisma.trade.update({
@@ -288,11 +315,19 @@ export class TradingEngine {
         0
       ) || 0;
       const totalValue = cash + positionsValue;
-      console.log(
+      this.log.info(
         `[PORTFOLIO] ${model.displayName}: HOLD | ` +
-        `Cash ₹${cash.toLocaleString('en-IN', { maximumFractionDigits: 0 })} | ` +
-        `Value ₹${totalValue.toLocaleString('en-IN', { maximumFractionDigits: 0 })} | ` +
-        `Positions: ${model.portfolio?.positions.map(p => `${p.shares} ${p.ticker}`).join(', ') || 'None'}`
+          `Cash ₹${cash.toLocaleString('en-IN', { maximumFractionDigits: 0 })} | ` +
+          `Value ₹${totalValue.toLocaleString('en-IN', { maximumFractionDigits: 0 })} | ` +
+          `Positions: ${model.portfolio?.positions.map(p => `${p.shares} ${p.ticker}`).join(', ') || 'None'}`,
+        {
+          event: 'portfolio',
+          modelId: model.id,
+          modelName: model.displayName,
+          cash,
+          totalValue,
+          runId: this.currentRunId,
+        },
       );
       this.publisher?.publish('portfolio', {
         runId: this.currentRunId,
@@ -460,7 +495,12 @@ export class TradingEngine {
         data: { status: 'REJECTED' },
       });
       
-      console.error('❌ Trade execution failed:', error);
+      this.log.error('Trade execution failed', {
+        modelId,
+        action: decision.action,
+        ticker: decision.ticker,
+        error: error instanceof Error ? error.message : String(error),
+      });
       throw error;
     }
   }
@@ -566,7 +606,9 @@ export class TradingEngine {
         },
       });
     } catch (error) {
-      console.error('Failed to log system event:', error);
+      this.log.error('Failed to log system event', {
+        error: error instanceof Error ? error.message : String(error),
+      });
     }
   }
 }

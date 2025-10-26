@@ -15,9 +15,8 @@ type ModelSummaryProps = {
 };
 
 const formatValue = (value: number) =>
-  `$${value.toLocaleString(undefined, {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
+  `₹${value.toLocaleString('en-IN', {
+    maximumFractionDigits: 0,
   })}`;
 
 export function ModelSummary({ rows }: ModelSummaryProps) {

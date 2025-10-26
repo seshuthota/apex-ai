@@ -8,19 +8,26 @@
 import { KiteConnect } from 'kiteconnect';
 import type { BrokerOrderResult } from '@/lib/types';
 
+const ZERODHA_API_KEY =
+  process.env.ZERODHA_API_KEY ?? process.env.KITE_API_KEY ?? '';
+const ZERODHA_ACCESS_TOKEN =
+  process.env.ZERODHA_ACCESS_TOKEN ?? process.env.KITE_ACCESS_TOKEN ?? '';
+
 export class BrokerService {
   private kite: KiteConnect | null = null;
 
   constructor() {
     // Initialize Kite Connect if credentials are available
-    if (process.env.KITE_API_KEY && process.env.KITE_ACCESS_TOKEN) {
+    if (ZERODHA_API_KEY && ZERODHA_ACCESS_TOKEN) {
       this.kite = new KiteConnect({
-        api_key: process.env.KITE_API_KEY,
+        api_key: ZERODHA_API_KEY,
       });
-      this.kite.setAccessToken(process.env.KITE_ACCESS_TOKEN);
-      console.log('✅ Broker Service initialized with Kite Connect');
+      this.kite.setAccessToken(ZERODHA_ACCESS_TOKEN);
+      console.log('✅ Broker Service initialized with Zerodha credentials');
     } else {
-      console.warn('⚠️ Kite Connect credentials not configured');
+      console.warn(
+        '⚠️ Zerodha credentials not configured (expected ZERODHA_API_KEY and ZERODHA_ACCESS_TOKEN)',
+      );
     }
   }
 
@@ -33,7 +40,9 @@ export class BrokerService {
     shares: number;
   }): Promise<BrokerOrderResult> {
     if (!this.kite) {
-      throw new Error('Kite Connect not initialized. Please configure KITE_API_KEY and KITE_ACCESS_TOKEN');
+      throw new Error(
+        'Kite Connect not initialized. Please configure ZERODHA_API_KEY and ZERODHA_ACCESS_TOKEN',
+      );
     }
 
     try {

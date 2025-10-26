@@ -12,9 +12,12 @@ import { TradingEngine } from './trading-engine';
 import type { IDataService, IBrokerService } from '@/lib/types';
 
 // Determine if we should use mock services
-const useMockServices = process.env.USE_MOCK_SERVICES === 'true' || 
-                        !process.env.ZERODHA_API_KEY ||
-                        !process.env.KITE_API_KEY;
+const zerodhaApiKey = process.env.ZERODHA_API_KEY ?? process.env.KITE_API_KEY ?? '';
+const zerodhaAccessToken = process.env.ZERODHA_ACCESS_TOKEN ?? process.env.KITE_ACCESS_TOKEN ?? '';
+const useMockServices =
+  process.env.USE_MOCK_SERVICES === 'true' ||
+  !zerodhaApiKey ||
+  !zerodhaAccessToken;
 
 // Singletons to keep state (mock price history etc.) consistent across calls
 const dataServiceInstance: IDataService = useMockServices ? new MockDataService() : new DataService();

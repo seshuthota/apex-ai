@@ -12,20 +12,27 @@ import { KiteConnect } from 'kiteconnect';
 import { prisma } from '@/lib/db/prisma';
 import type { MarketDataPoint, NewsArticle } from '@/lib/types';
 
+const ZERODHA_API_KEY =
+  process.env.ZERODHA_API_KEY ?? process.env.KITE_API_KEY ?? '';
+const ZERODHA_ACCESS_TOKEN =
+  process.env.ZERODHA_ACCESS_TOKEN ?? process.env.KITE_ACCESS_TOKEN ?? '';
+
 export class DataService {
   private kite: KiteConnect | null = null;
   private newsApiKey: string;
 
   constructor() {
     // Initialize Kite Connect if credentials are available
-    if (process.env.ZERODHA_API_KEY && process.env.ZERODHA_ACCESS_TOKEN) {
+    if (ZERODHA_API_KEY && ZERODHA_ACCESS_TOKEN) {
       this.kite = new KiteConnect({
-        api_key: process.env.ZERODHA_API_KEY,
+        api_key: ZERODHA_API_KEY,
       });
-      this.kite.setAccessToken(process.env.ZERODHA_ACCESS_TOKEN);
-      console.log('✅ Kite Connect initialized');
+      this.kite.setAccessToken(ZERODHA_ACCESS_TOKEN);
+      console.log('✅ Kite Connect initialized using ZERODHA_* credentials');
     } else {
-      console.warn('⚠️ Zerodha Kite Connect credentials not configured, will use Yahoo Finance fallback');
+      console.warn(
+        '⚠️ Zerodha Kite Connect credentials not configured (expected ZERODHA_API_KEY and ZERODHA_ACCESS_TOKEN). Falling back to Yahoo Finance.',
+      );
     }
 
     this.newsApiKey = process.env.NEWS_API_KEY || '';

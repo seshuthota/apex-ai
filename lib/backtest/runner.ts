@@ -1,10 +1,8 @@
-import { PrismaClient } from '@prisma/client';
 import { addDays, format, isWeekend, parseISO } from 'date-fns';
 import { getDataService, getTradingEngine } from '@/lib/services';
 import { PortfolioCalculator } from '@/lib/services/portfolio-calculator';
 import type { EventPublisher } from '@/lib/backtest/publisher';
-
-const prisma = new PrismaClient();
+import { prisma } from '@/lib/db/prisma';
 
 export interface BacktestParams {
   startDate: string;
