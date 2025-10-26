@@ -27,12 +27,24 @@ export async function GET(req: NextRequest) {
       write('retry: 3000\n\n');
       const heartbeat = setInterval(() => write(': ping\n\n'), 15000);
 
+      let runId: string | null = null;
+
       (async () => {
         try {
-          await runBacktestLive({ startDate, endDate, intervalMinutes, enriched, useTools }, publisher);
+          runId = await runBacktestLive(
+            { startDate, endDate, intervalMinutes, enriched, useTools },
+            publisher,
+            {
+              signal: req.signal,
+              onRunCreated: (id) => {
+                runId = id;
+              },
+            },
+          );
           publisher.close?.();
-        } catch (e: any) {
-          publisher.publish('error', { message: e?.message || 'Unknown error' });
+        } catch (error) {
+          const message = error instanceof Error ? error.message : 'Unknown error';
+          publisher.publish('error', { runId, message });
         } finally {
           clearInterval(heartbeat);
           controller.close();
@@ -40,7 +52,7 @@ export async function GET(req: NextRequest) {
       })();
 
       abort.addEventListener('abort', () => {
-        publisher.publish('error', { message: 'Client disconnected' });
+        publisher.publish('error', { runId, message: 'Client disconnected' });
         clearInterval(heartbeat);
         controller.close();
       });

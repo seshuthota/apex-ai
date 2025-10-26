@@ -9,7 +9,9 @@
  */
 
 import 'dotenv/config';
+import { spawn } from 'child_process';
 import { getTradingEngine } from '../lib/services';
+import { DataService } from '../lib/services/data-service';
 import { prisma } from '../lib/db/prisma';
 
 async function main() {
@@ -67,7 +69,6 @@ async function main() {
       console.log('   Run: tsx prisma/seed-test.ts\n');
       
       // Run seed
-      const { spawn } = require('child_process');
       await new Promise((resolve, reject) => {
         const seed = spawn('tsx', ['prisma/seed-test.ts'], { stdio: 'inherit' });
         seed.on('close', (code: number) => {
@@ -117,10 +118,9 @@ async function main() {
 
     // Check if market is open
     console.log('5️⃣  Checking market hours...');
-    const dataService = require('../lib/services/data-service').DataService;
-    const ds = new dataService();
-    const isOpen = ds.isMarketOpen();
-    const istTime = ds.getCurrentISTTime();
+    const dataService = new DataService();
+    const isOpen = dataService.isMarketOpen();
+    const istTime = dataService.getCurrentISTTime();
     
     console.log(`   Current IST time: ${istTime.toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })}`);
     console.log(`   Market status: ${isOpen ? '🟢 OPEN' : '🔴 CLOSED'}`);

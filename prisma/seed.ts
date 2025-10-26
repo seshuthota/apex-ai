@@ -6,6 +6,9 @@ async function main() {
   console.log('🌱 Starting database seed...');
 
   // Clear existing data
+  await prisma.backtestRunSnapshot.deleteMany();
+  await prisma.backtestRunModel.deleteMany();
+  await prisma.backtestRun.deleteMany();
   await prisma.systemLog.deleteMany();
   await prisma.marketData.deleteMany();
   await prisma.decisionLog.deleteMany();
@@ -19,27 +22,15 @@ async function main() {
   // Create initial models
   const models = [
     {
-      name: 'gemini-trader',
-      displayName: 'Gemini Pro Trader',
-      provider: 'GEMINI_PRO' as const,
+      name: 'minimax-trader',
+      displayName: 'MiniMax M2 Trader (OpenRouter)',
+      provider: 'OPENROUTER_MINIMAX' as const,
       isActive: true,
     },
     {
-      name: 'gpt4-trader',
-      displayName: 'GPT-4 Trader',
-      provider: 'GPT4' as const,
-      isActive: true,
-    },
-    {
-      name: 'claude-trader',
-      displayName: 'Claude Sonnet Trader',
-      provider: 'CLAUDE_SONNET' as const,
-      isActive: true,
-    },
-    {
-      name: 'openrouter-llama-trader',
-      displayName: 'Llama 3.1 Trader (OpenRouter)',
-      provider: 'OPENROUTER_LLAMA' as const,
+      name: 'deepseek-trader',
+      displayName: 'DeepSeek Chat v3.1 Trader (OpenRouter)',
+      provider: 'OPENROUTER_DEEPSEEK' as const,
       isActive: true,
     },
   ];

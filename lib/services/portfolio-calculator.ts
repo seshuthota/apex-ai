@@ -93,7 +93,7 @@ export class PortfolioCalculator {
   /**
    * Create a portfolio snapshot
    */
-  async createSnapshot(portfolioId: string, timestamp?: Date): Promise<void> {
+  async createSnapshot(portfolioId: string, timestamp?: Date, backtestRunId?: string): Promise<void> {
     const valuation = await this.calculateTotalValue(portfolioId);
 
     await prisma.portfolioSnapshot.create({
@@ -103,6 +103,7 @@ export class PortfolioCalculator {
         cashBalance: valuation.cashBalance,
         positionsValue: valuation.positionsValue,
         returnPct: valuation.returnPct,
+        ...(backtestRunId ? { backtestRunId } : {}),
         ...(timestamp ? { timestamp } : {}),
       },
     });

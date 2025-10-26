@@ -39,8 +39,6 @@ export class DataService {
    * Tries Kite Connect first, falls back to Yahoo Finance
    */
   async getMarketData(tickers: string[]): Promise<MarketDataPoint[]> {
-    const results: MarketDataPoint[] = [];
-
     // Try Kite Connect first
     if (this.kite) {
       try {

@@ -7,6 +7,9 @@ async function main() {
 
   // Clear existing data for clean test
   console.log('🧹 Cleaning existing test data...');
+  await prisma.backtestRunSnapshot.deleteMany();
+  await prisma.backtestRunModel.deleteMany();
+  await prisma.backtestRun.deleteMany();
   
   const existingModels = await prisma.model.findMany({
     where: {

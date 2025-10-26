@@ -23,7 +23,8 @@ model Model {
   trades        Trade[]
   decisions     DecisionLog[]
   config        ModelConfig?
-  
+  backtestResults BacktestRunModel[]
+
   createdAt     DateTime     @default(now())
   updatedAt     DateTime     @updatedAt
 }
@@ -78,20 +79,26 @@ model Trade {
   id            String      @id @default(cuid())
   modelId       String
   model         Model       @relation(fields: [modelId], references: [id])
-  
+  backtestRunId String?
+  backtestRun   BacktestRun? @relation(fields: [backtestRunId], references: [id])
+
   ticker        String
   action        TradeAction // BUY, SELL
   shares        Int
   price         Decimal     @db.Decimal(15, 2)
   totalValue    Decimal     @db.Decimal(15, 2)
-  
+  cashAfter     Decimal?    @db.Decimal(15, 2)
+  portfolioValueAfter Decimal? @db.Decimal(15, 2)
+  portfolioState Json?
+
   status        TradeStatus @default(PENDING)
   brokerOrderId String?
-  
+
   createdAt     DateTime    @default(now())
   executedAt    DateTime?
-  
+
   @@index([modelId, createdAt])
+  @@index([backtestRunId, createdAt])
 }
 
 enum TradeAction {
@@ -111,17 +118,20 @@ model DecisionLog {
   id              String     @id @default(cuid())
   modelId         String
   model           Model      @relation(fields: [modelId], references: [id])
-  
+  backtestRunId   String?
+  backtestRun     BacktestRun? @relation(fields: [backtestRunId], references: [id])
+
   reasoning       String     @db.Text
   rawResponse     String     @db.Text
   promptTokens    Int?
   responseTokens  Int?
   
   tradeId         String?
-  
+
   createdAt       DateTime   @default(now())
-  
+
   @@index([modelId, createdAt])
+  @@index([backtestRunId, createdAt])
 }
 
 // PortfolioSnapshot - Historical valuations
@@ -129,15 +139,18 @@ model PortfolioSnapshot {
   id              String     @id @default(cuid())
   portfolioId     String
   portfolio       Portfolio  @relation(fields: [portfolioId], references: [id])
-  
+  backtestRunId   String?
+  backtestRun     BacktestRun? @relation(fields: [backtestRunId], references: [id])
+
   totalValue      Decimal    @db.Decimal(15, 2)
   cashBalance     Decimal    @db.Decimal(15, 2)
   positionsValue  Decimal    @db.Decimal(15, 2)
   returnPct       Decimal    @db.Decimal(10, 4)
   
   timestamp       DateTime   @default(now())
-  
+
   @@index([portfolioId, timestamp])
+  @@index([backtestRunId, timestamp])
 }
 
 // ModelConfig - Versioned prompt configurations
@@ -187,4 +200,72 @@ enum LogLevel {
   INFO
   WARN
   ERROR
+}
+
+model BacktestRun {
+  id              String             @id @default(cuid())
+  startDate       DateTime
+  endDate         DateTime
+  intervalMinutes Int
+  enriched        Boolean            @default(true)
+  useTools        Boolean            @default(true)
+  status          BacktestRunStatus  @default(PENDING)
+  createdAt       DateTime           @default(now())
+  updatedAt       DateTime           @updatedAt
+  startedAt       DateTime?
+  completedAt     DateTime?
+  failedAt        DateTime?
+  failureReason   String?
+  tradingDays     Int?
+  totalTrades     Int?
+  durationMs      Int?
+
+  models          BacktestRunModel[]
+  trades          Trade[]
+  snapshots       PortfolioSnapshot[]
+  decisions       DecisionLog[]
+}
+
+model BacktestRunModel {
+  id                 String               @id @default(cuid())
+  runId              String
+  run                BacktestRun          @relation(fields: [runId], references: [id])
+  modelId            String
+  model              Model?               @relation(fields: [modelId], references: [id])
+  modelName          String
+  finalCash          Decimal              @db.Decimal(15, 2)
+  finalPositionsValue Decimal             @db.Decimal(15, 2)
+  finalTotalValue    Decimal              @db.Decimal(15, 2)
+  returnPct          Decimal              @db.Decimal(10, 4)
+  rank               Int?
+  finalPositions     Json?
+  createdAt          DateTime             @default(now())
+  updatedAt          DateTime             @updatedAt
+
+  snapshots          BacktestRunSnapshot[]
+
+  @@unique([runId, modelId])
+  @@index([modelId])
+}
+
+model BacktestRunSnapshot {
+  id            String            @id @default(cuid())
+  runModelId    String
+  runModel      BacktestRunModel  @relation(fields: [runModelId], references: [id])
+  date          DateTime
+  totalValue    Decimal           @db.Decimal(15, 2)
+  cash          Decimal?          @db.Decimal(15, 2)
+  positionsValue Decimal?         @db.Decimal(15, 2)
+  returnPct     Decimal?          @db.Decimal(10, 4)
+  createdAt     DateTime          @default(now())
+
+  @@index([runModelId, date])
+}
+
+enum BacktestRunStatus {
+  PENDING
+  RUNNING
+  COMPLETED
+  FAILED
+  CANCELLED
 }

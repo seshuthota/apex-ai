@@ -36,6 +36,7 @@ export class TradingEngine {
   private brokerService: IBrokerService;
   private useMockData: boolean;
   private publisher?: EventPublisher;
+  private currentRunId?: string;
 
   constructor(options: TradingEngineOptions) {
     this.dataService = options.dataService;
@@ -52,6 +53,11 @@ export class TradingEngine {
     this.modelManager.setPublisher(p);
   }
 
+  setRunContext(runId?: string) {
+    this.currentRunId = runId;
+    this.modelManager.setRunContext(runId);
+  }
+
   /**
    * Execute full trading cycle for all active models
    */
@@ -63,7 +69,7 @@ export class TradingEngine {
   }> {
     const startTime = Date.now();
     let processed = 0;
-    let executed = 0;
+    const executed = 0;
     let errors = 0;
 
     try {
@@ -212,6 +218,7 @@ export class TradingEngine {
       const prePos = preModel?.portfolio?.positions.find(p => p.ticker === decision.ticker);
 
       const exec = await this.executeTrade(modelId, decision, simulatedTime);
+      const eventTimestamp = (simulatedTime ?? new Date()).toISOString();
       
       // Get updated portfolio after trade
       const updatedModel = await prisma.model.findUnique({
@@ -242,7 +249,25 @@ export class TradingEngine {
         line += ` | Value ₹${totalValue.toLocaleString('en-IN', { maximumFractionDigits: 0 })}`;
         line += ` | Positions: ${updatedModel.portfolio.positions.map(p => `${p.shares} ${p.ticker}`).join(', ') || 'None'}`;
         console.log(line);
+
+        if (exec.status === 'FILLED' && exec.tradeId) {
+          await prisma.trade.update({
+            where: { id: exec.tradeId },
+            data: {
+              cashAfter: cash,
+              portfolioValueAfter: totalValue,
+              portfolioState: {
+                positions: updatedModel.portfolio.positions.map(p => ({
+                  ticker: p.ticker,
+                  shares: p.shares,
+                })),
+              },
+            },
+          });
+        }
+
         this.publisher?.publish('trade', {
+          runId: this.currentRunId,
           modelId: model.id,
           modelName: model.displayName,
           action: decision.action,
@@ -253,6 +278,7 @@ export class TradingEngine {
           cash,
           totalValue,
           positions: updatedModel.portfolio.positions.map(p => ({ ticker: p.ticker, shares: p.shares })),
+          timestamp: eventTimestamp,
         });
       }
     } else {
@@ -269,11 +295,13 @@ export class TradingEngine {
         `Positions: ${model.portfolio?.positions.map(p => `${p.shares} ${p.ticker}`).join(', ') || 'None'}`
       );
       this.publisher?.publish('portfolio', {
+        runId: this.currentRunId,
         modelId: model.id,
         modelName: model.displayName,
         cash,
         totalValue,
         positions: model.portfolio?.positions.map(p => ({ ticker: p.ticker, shares: p.shares })) || [],
+        timestamp: (simulatedTime ?? new Date()).toISOString(),
       });
     }
 
@@ -283,7 +311,7 @@ export class TradingEngine {
     });
 
     if (portfolio) {
-      await this.portfolioCalc.createSnapshot(portfolio.id, simulatedTime);
+      await this.portfolioCalc.createSnapshot(portfolio.id, simulatedTime, this.currentRunId);
     }
   }
 
@@ -383,7 +411,7 @@ export class TradingEngine {
     modelId: string,
     decision: TradeDecision,
     simulatedTime?: Date
-  ): Promise<{ status: 'FILLED' | 'REJECTED'; filledPrice?: number }> {
+  ): Promise<{ status: 'FILLED' | 'REJECTED'; filledPrice?: number; tradeId: string }> {
     // Create trade record
     const trade = await prisma.trade.create({
       data: {
@@ -394,6 +422,7 @@ export class TradingEngine {
         price: 0, // Will update after fill
         totalValue: 0,
         status: 'PENDING',
+        ...(this.currentRunId ? { backtestRunId: this.currentRunId } : {}),
         ...(simulatedTime ? { createdAt: simulatedTime } : {}),
       },
     });
@@ -421,9 +450,9 @@ export class TradingEngine {
       if (result.status === 'COMPLETE' && result.filledPrice) {
         // Update portfolio (silent)
         await this.updatePortfolio(modelId, decision, result.filledPrice);
-        return { status: 'FILLED', filledPrice: result.filledPrice };
+        return { status: 'FILLED', filledPrice: result.filledPrice, tradeId: trade.id };
       }
-      return { status: 'REJECTED' };
+      return { status: 'REJECTED', tradeId: trade.id };
     } catch (error) {
       // Mark trade as rejected
       await prisma.trade.update({
@@ -525,11 +554,15 @@ export class TradingEngine {
    */
   private async logSystemEvent(level: 'INFO' | 'WARN' | 'ERROR', message: string, metadata?: any): Promise<void> {
     try {
+      const mergedMetadata = {
+        ...(metadata || {}),
+        ...(this.currentRunId ? { backtestRunId: this.currentRunId } : {}),
+      };
       await prisma.systemLog.create({
         data: {
           level,
           message,
-          metadata: metadata || {},
+          metadata: mergedMetadata,
         },
       });
     } catch (error) {

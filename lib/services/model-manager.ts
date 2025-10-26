@@ -12,6 +12,7 @@ import type { EventPublisher } from '@/lib/backtest/publisher';
 export class ModelManager {
   private features: MarketFeatureService;
   private publisher?: EventPublisher;
+  private runId?: string;
 
   constructor() {
     this.features = new MarketFeatureService();
@@ -19,6 +20,10 @@ export class ModelManager {
 
   setPublisher(p?: EventPublisher) {
     this.publisher = p;
+  }
+
+  setRunContext(runId?: string) {
+    this.runId = runId;
   }
   async getModelDecision(
     modelId: string,
@@ -81,7 +86,7 @@ export class ModelManager {
     }
 
     // Build prompt (with optional feedback)
-    let prompt = buildTradingPrompt(
+    const prompt = buildTradingPrompt(
       {
         modelName: model.displayName,
         cashBalance: Number(model.portfolio.cashBalance),
@@ -157,7 +162,7 @@ export class ModelManager {
           const tickers = parsed.tickers.filter(t => model.config!.watchlist.includes(t));
           const metrics = parsed.metrics;
           if (tickers.length > 0) {
-            this.publisher?.publish('analyze', { modelId: model.id, tickers, metrics });
+            this.publisher?.publish('analyze', { runId: this.runId, modelId: model.id, tickers, metrics });
 
             const blocks: string[] = [];
             if (metrics.includes('history_30d')) {
@@ -247,6 +252,7 @@ export class ModelManager {
         await prisma.decisionLog.create({
           data: {
             modelId,
+            ...(this.runId ? { backtestRunId: this.runId } : {}),
             reasoning: decision.reasoning,
             rawResponse,
           },
@@ -262,6 +268,7 @@ export class ModelManager {
           await prisma.decisionLog.create({
             data: {
               modelId,
+              ...(this.runId ? { backtestRunId: this.runId } : {}),
               reasoning: `Failed after ${maxRetries} attempts`,
               rawResponse: error instanceof Error ? error.message : 'Unknown error',
             },

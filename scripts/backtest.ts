@@ -71,23 +71,6 @@ async function runBacktest(config: BacktestConfig) {
     console.log(`\n📆 Day ${tradingDay}: ${format(currentDate, 'EEEE, MMM dd, yyyy')}`);
 
     try {
-      // Get portfolios BEFORE trading
-      const modelsBefore = await prisma.model.findMany({
-        where: {
-          isActive: true,
-          ...(config.modelNames && { name: { in: config.modelNames } }),
-        },
-        include: {
-          portfolio: {
-            include: {
-              positions: true,
-            },
-          },
-        },
-      });
-
-      // Silent - portfolio states will be shown after trades
-
       // Run multiple trading cycles for this day if interval < 1 day
       const startTime = Date.now();
       
@@ -110,8 +93,9 @@ async function runBacktest(config: BacktestConfig) {
         totalProcessed += cycleResult.processed;
         totalErrors += cycleResult.errors;
       }
-      
+
       const duration = (Date.now() - startTime) / 1000;
+      console.log(`\n✅ Cycles complete: processed ${totalProcessed} models with ${totalErrors} errors in ${duration.toFixed(2)}s`);
 
       // Get portfolios AFTER trading
       const modelsAfter = await prisma.model.findMany({

@@ -88,7 +88,8 @@ export class MockBrokerService {
   /**
    * Check order status (mock implementation)
    */
-  async getOrderStatus(orderId: string): Promise<string> {
+  async getOrderStatus(_orderId: string): Promise<string> {
+    void _orderId;
     // All mock orders are immediately filled
     return 'COMPLETE';
   }
