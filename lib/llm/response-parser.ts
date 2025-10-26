@@ -1,13 +1,5 @@
 import { z } from 'zod';
-
-const TradeDecisionSchema = z.object({
-  action: z.enum(['BUY', 'SELL', 'HOLD']),
-  ticker: z.string().nullable(),
-  shares: z.number().int().nonnegative(),
-  reasoning: z.string(),
-});
-
-export type TradeDecision = z.infer<typeof TradeDecisionSchema>;
+import { TradeDecisionSchema, type TradeDecision } from '@/lib/types/trading';
 
 export function parseTradeDecision(rawResponse: string): TradeDecision {
   // Extract JSON from markdown code blocks if present
@@ -27,12 +19,63 @@ export function parseTradeDecision(rawResponse: string): TradeDecision {
   
   try {
     const parsed = JSON.parse(jsonStr);
-    return TradeDecisionSchema.parse(parsed);
+    const result = TradeDecisionSchema.parse(parsed);
+    return { ...result, leverage: result.leverage ?? 1 };
   } catch (error) {
     if (error instanceof z.ZodError) {
-      throw new Error(`Invalid trade decision format: ${error.errors.map(e => e.message).join(', ')}`);
+      throw new Error(
+        `Invalid trade decision format: ${error.issues.map((e) => e.message).join(', ')}`
+      );
     }
     throw new Error(`Failed to parse JSON response: ${error}`);
+  }
+}
+
+// Tool-aware union
+const RequestDataSchema = z.object({
+  type: z.literal('request_data'),
+  tickers: z.array(z.string()).min(1),
+  metrics: z.array(z.enum(['history_30d', 'indicators'])).min(1),
+});
+
+const DecisionEnvelopeSchema = z.object({
+  type: z.literal('decision'),
+  action: z.enum(['BUY', 'SELL', 'HOLD']),
+  ticker: z.string().nullable(),
+  shares: z.number().int().nonnegative(),
+  reasoning: z.string(),
+  leverage: z.number().int().min(1).max(20).optional(),
+});
+
+export function parseToolAwareResponse(rawResponse: string):
+  | { type: 'request_data'; tickers: string[]; metrics: Array<'history_30d' | 'indicators'> }
+  | { type: 'decision'; decision: TradeDecision }
+  | null {
+  let jsonStr = rawResponse.trim();
+  const jsonMatch = jsonStr.match(/```(?:json)?\s*(\{[\s\S]*?\})\s*```/);
+  if (jsonMatch) jsonStr = jsonMatch[1];
+  const jsonObjectMatch = jsonStr.match(/\{[\s\S]*\}/);
+  if (jsonObjectMatch) jsonStr = jsonObjectMatch[0];
+  try {
+    const parsed = JSON.parse(jsonStr);
+    // Try request first
+    const req = RequestDataSchema.safeParse(parsed);
+    if (req.success) return req.data;
+    // Then decision envelope
+    const dec = DecisionEnvelopeSchema.safeParse(parsed);
+    if (dec.success) {
+      const d = TradeDecisionSchema.parse({
+        action: dec.data.action,
+        ticker: dec.data.ticker,
+        shares: dec.data.shares,
+        reasoning: dec.data.reasoning,
+        leverage: dec.data.leverage,
+      });
+      return { type: 'decision', decision: { ...d, leverage: d.leverage ?? 1 } };
+    }
+    return null;
+  } catch {
+    return null;
   }
 }
 

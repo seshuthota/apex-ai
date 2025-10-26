@@ -107,7 +107,7 @@ export class MockDataService {
       });
     }
 
-    console.log(`📊 Mock market data fetched for ${tickers.length} stocks`);
+    // Silent mock data fetch
     return results;
   }
 
@@ -119,7 +119,7 @@ export class MockDataService {
     const shuffled = [...mockNewsHeadlines].sort(() => Math.random() - 0.5);
     const selected = shuffled.slice(0, Math.min(limit, mockNewsHeadlines.length));
 
-    console.log(`📰 Mock news fetched: ${selected.length} articles`);
+    // Silent mock news fetch
     return selected;
   }
 
@@ -139,7 +139,7 @@ export class MockDataService {
     Object.entries(mockPrices).forEach(([ticker, { base }]) => {
       this.priceHistory.set(ticker, base);
     });
-    console.log('🔄 Mock prices reset to base values');
+    // Silent price reset
   }
 
   /**
@@ -150,7 +150,7 @@ export class MockDataService {
       const newPrice = price * (1 - percentage / 100);
       this.priceHistory.set(ticker, newPrice);
     });
-    console.log(`📉 Simulated ${percentage}% market crash`);
+    // Silent market crash simulation
   }
 
   /**
@@ -161,6 +161,6 @@ export class MockDataService {
       const newPrice = price * (1 + percentage / 100);
       this.priceHistory.set(ticker, newPrice);
     });
-    console.log(`📈 Simulated ${percentage}% market rally`);
+    // Silent market rally simulation
   }
 }

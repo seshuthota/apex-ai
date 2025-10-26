@@ -43,7 +43,7 @@ export class MockBrokerService {
     const variation = (Math.random() - 0.5) * 0.01; // ±0.5%
     const filledPrice = basePrice * (1 + variation);
 
-    console.log(`📝 Mock ${params.action} order placed: ${params.shares} shares of ${params.ticker} @ ₹${filledPrice.toFixed(2)}`);
+    // Silent order placement
 
     // Update mock price for next order (slight drift)
     this.mockPrices.set(params.ticker, filledPrice);
@@ -55,14 +55,14 @@ export class MockBrokerService {
     const isRejected = Math.random() < 0.05;
 
     if (isRejected) {
-      console.log(`❌ Mock order ${orderId} REJECTED`);
+      // Silent rejection
       return {
         orderId,
         status: 'REJECTED',
       };
     }
 
-    console.log(`✅ Mock order ${orderId} FILLED @ ₹${filledPrice.toFixed(2)}`);
+    // Silent order fill
 
     return {
       orderId,
@@ -98,7 +98,7 @@ export class MockBrokerService {
    */
   setMockPrice(ticker: string, price: number): void {
     this.mockPrices.set(ticker, price);
-    console.log(`💰 Mock price for ${ticker} set to ₹${price}`);
+    // Silent price update
   }
 
   /**
@@ -110,6 +110,6 @@ export class MockBrokerService {
       const newPrice = price * (1 + change / 100);
       this.mockPrices.set(ticker, newPrice);
     });
-    console.log(`📊 Simulated ${percentage}% market volatility`);
+    // Silent volatility simulation
   }
 }

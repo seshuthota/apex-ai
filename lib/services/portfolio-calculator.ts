@@ -5,12 +5,12 @@
  */
 
 import { prisma } from '@/lib/db/prisma';
-import type { PortfolioValuation } from '@/lib/types';
+import type { PortfolioValuation, IDataService } from '@/lib/types';
 
 export class PortfolioCalculator {
-  private dataService: any; // Will be injected
+  private dataService: IDataService; // Will be injected
 
-  constructor(dataService: any) {
+  constructor(dataService: IDataService) {
     this.dataService = dataService;
   }
 
@@ -93,7 +93,7 @@ export class PortfolioCalculator {
   /**
    * Create a portfolio snapshot
    */
-  async createSnapshot(portfolioId: string): Promise<void> {
+  async createSnapshot(portfolioId: string, timestamp?: Date): Promise<void> {
     const valuation = await this.calculateTotalValue(portfolioId);
 
     await prisma.portfolioSnapshot.create({
@@ -103,10 +103,9 @@ export class PortfolioCalculator {
         cashBalance: valuation.cashBalance,
         positionsValue: valuation.positionsValue,
         returnPct: valuation.returnPct,
+        ...(timestamp ? { timestamp } : {}),
       },
     });
-
-    console.log(`📸 Portfolio snapshot created for ${portfolioId}: ₹${valuation.totalValue.toFixed(2)} (${valuation.returnPct.toFixed(2)}%)`);
   }
 
   /**

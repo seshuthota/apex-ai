@@ -11,7 +11,12 @@
     "db:migrate": "prisma migrate dev",
     "db:seed": "tsx prisma/seed.ts",
     "db:studio": "prisma studio",
-    "test:trading": "tsx scripts/test-trading.ts"
+    "test:trading": "tsx scripts/test-trading.ts",
+    "test:real": "tsx scripts/test-real-apis.ts",
+    "seed:test": "tsx prisma/seed-test.ts",
+    "backtest": "tsx scripts/backtest.ts",
+    "reset": "tsx scripts/reset-portfolios.ts",
+    "clean:all": "tsx scripts/clean-all.ts"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"

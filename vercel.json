@@ -2,7 +2,8 @@
   "crons": [
     {
       "path": "/api/cron/trigger-trades",
-      "schedule": "*/30 9-15 * * 1-5"
+      "schedule": "*/30 3-10 * * 1-5",
+      "comment": "Every 30 minutes during NSE hours (9:15 AM - 3:30 PM IST = 3:45 AM - 10:00 AM UTC)"
     }
   ]
 }

@@ -12,21 +12,30 @@
 import { prisma } from '@/lib/db/prisma';
 import { ModelManager } from './model-manager';
 import { PortfolioCalculator } from './portfolio-calculator';
-import type { TradeDecision } from '@/lib/llm/response-parser';
-import type { BrokerOrderResult } from '@/lib/types';
+import type { TradeDecision } from '@/lib/types';
+import type { BrokerOrderResult, IBrokerService, IDataService } from '@/lib/types';
+import type { EventPublisher } from '@/lib/backtest/publisher';
+
+// ANSI color helpers for concise, readable logs in TTY
+const useColors = typeof process !== 'undefined' && process.stdout && process.stdout.isTTY;
+const color = (s: string, code: number) => (useColors ? `\x1b[${code}m${s}\x1b[0m` : s);
+const blue = (s: string) => color(s, 34);
+const green = (s: string) => color(s, 32);
+const red = (s: string) => color(s, 31);
 
 interface TradingEngineOptions {
-  dataService: any;
-  brokerService: any;
+  dataService: IDataService;
+  brokerService: IBrokerService;
   useMockData?: boolean;
 }
 
 export class TradingEngine {
   private modelManager: ModelManager;
   private portfolioCalc: PortfolioCalculator;
-  private dataService: any;
-  private brokerService: any;
+  private dataService: IDataService;
+  private brokerService: IBrokerService;
   private useMockData: boolean;
+  private publisher?: EventPublisher;
 
   constructor(options: TradingEngineOptions) {
     this.dataService = options.dataService;
@@ -35,23 +44,23 @@ export class TradingEngine {
     
     this.modelManager = new ModelManager();
     this.portfolioCalc = new PortfolioCalculator(this.dataService);
+    this.modelManager.setPublisher(this.publisher);
+  }
 
-    console.log(`🚀 Trading Engine initialized (${this.useMockData ? 'MOCK' : 'REAL'} mode)`);
+  setPublisher(p?: EventPublisher) {
+    this.publisher = p;
+    this.modelManager.setPublisher(p);
   }
 
   /**
    * Execute full trading cycle for all active models
    */
-  async executeTradingCycle(): Promise<{
+  async executeTradingCycle(options?: { simulatedTime?: Date }): Promise<{
     success: boolean;
     processed: number;
     executed: number;
     errors: number;
   }> {
-    console.log('═══════════════════════════════════════════════════════');
-    console.log('🎯 STARTING TRADING CYCLE');
-    console.log('═══════════════════════════════════════════════════════');
-
     const startTime = Date.now();
     let processed = 0;
     let executed = 0;
@@ -59,12 +68,9 @@ export class TradingEngine {
 
     try {
       // Check if market is open (skip check in mock mode)
-      if (!this.useMockData && !this.dataService.isMarketOpen()) {
-        const istTime = this.dataService.getCurrentISTTime();
-        console.log(`⏰ Market is closed at ${istTime.toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata' })} IST`);
-        
+      if (!this.useMockData && this.dataService.isMarketOpen && !this.dataService.isMarketOpen()) {
         await this.logSystemEvent('INFO', 'Trading cycle skipped - market closed', {
-          istTime: istTime.toISOString(),
+          istTime: (this.dataService.getCurrentISTTime ? this.dataService.getCurrentISTTime() : new Date()).toISOString(),
         });
         
         return { success: true, processed: 0, executed: 0, errors: 0 };
@@ -79,10 +85,7 @@ export class TradingEngine {
         },
       });
 
-      console.log(`📊 Found ${activeModels.length} active trading models`);
-
       if (activeModels.length === 0) {
-        console.log('⚠️  No active models found');
         return { success: true, processed: 0, executed: 0, errors: 0 };
       }
 
@@ -91,27 +94,15 @@ export class TradingEngine {
         .map(m => m.config?.watchlist || [])
         .flat();
       const uniqueTickers = [...new Set(allWatchlists)];
-
-      console.log(`📈 Fetching market data for ${uniqueTickers.length} tickers...`);
       const marketData = await this.dataService.getMarketData(uniqueTickers);
-      console.log(`✅ Market data fetched: ${marketData.length} stocks`);
-
-      // Fetch news once for all models
-      console.log('📰 Fetching latest news...');
-      const news = await this.dataService.getNews(10);
-      console.log(`✅ News fetched: ${news.length} articles`);
 
       // Process each model
       for (const model of activeModels) {
         try {
-          console.log(`\n┌─────────────────────────────────────────────────────┐`);
-          console.log(`│ Processing: ${model.displayName.padEnd(43)} │`);
-          console.log(`└─────────────────────────────────────────────────────┘`);
-
-          await this.processModel(model.id, marketData, news);
+          await this.processModel(model.id, marketData, options?.simulatedTime);
           processed++;
         } catch (error) {
-          console.error(`❌ Error processing model ${model.displayName}:`, error);
+          console.error(`Error processing model ${model.displayName}:`, error instanceof Error ? error.message : String(error));
           errors++;
           
           await this.logSystemEvent('ERROR', `Failed to process model ${model.name}`, {
@@ -122,13 +113,6 @@ export class TradingEngine {
       }
 
       const duration = ((Date.now() - startTime) / 1000).toFixed(2);
-      
-      console.log('\n═══════════════════════════════════════════════════════');
-      console.log('✅ TRADING CYCLE COMPLETED');
-      console.log(`   Duration: ${duration}s`);
-      console.log(`   Processed: ${processed}/${activeModels.length} models`);
-      console.log(`   Errors: ${errors}`);
-      console.log('═══════════════════════════════════════════════════════\n');
 
       await this.logSystemEvent('INFO', 'Trading cycle completed', {
         duration: `${duration}s`,
@@ -159,33 +143,138 @@ export class TradingEngine {
   }
 
   /**
-   * Process a single model
+   * Process a single model with agentic loop for decision refinement
    */
-  private async processModel(modelId: string, marketData: any[], news: any[]): Promise<void> {
-    // Get LLM decision
-    console.log('🤖 Getting AI decision...');
-    const { decision, rawResponse } = await this.modelManager.getModelDecision(
-      modelId,
-      marketData,
-      news
-    );
+  private async processModel(modelId: string, marketData: any[], simulatedTime?: Date): Promise<void> {
+    const maxAttempts = 3; // Allow model to refine decision up to 3 times
+    let attempt = 1;
+    let decision: any;
+    let validation: { isValid: boolean; reason?: string };
+    let previousDecision: any = null;
+    let validationFeedback: string | undefined = undefined;
 
-    console.log(`💭 Decision: ${decision.action}`);
-    console.log(`💡 Reasoning: ${decision.reasoning.substring(0, 100)}...`);
+    // Get model info for logging
+    const model = await prisma.model.findUnique({
+      where: { id: modelId },
+      include: {
+        portfolio: {
+          include: {
+            positions: true,
+          },
+        },
+      },
+    });
 
-    // Validate decision
-    const validation = await this.validateDecision(modelId, decision);
-    if (!validation.isValid) {
-      console.log(`❌ Invalid decision: ${validation.reason}`);
-      return;
+    if (!model) return;
+
+    // Agentic loop: Keep asking until we get a valid decision or max attempts
+    while (attempt <= maxAttempts) {
+      // Get LLM decision (with feedback if this is a retry)
+      const result = await this.modelManager.getModelDecision(
+        modelId,
+        marketData,
+        validationFeedback,
+        previousDecision
+      );
+
+      decision = result.decision;
+
+      // Validate decision
+      validation = await this.validateDecision(modelId, decision);
+      
+      if (validation.isValid) {
+        break; // Valid decision, exit loop
+      } else {
+        // Prepare for next iteration
+        previousDecision = decision;
+        validationFeedback = validation.reason;
+        attempt++;
+      }
+    }
+
+    // After loop: check final validation
+    if (!validation!.isValid) {
+      decision = {
+        action: 'HOLD',
+        ticker: null,
+        shares: 0,
+        reasoning: `Could not find valid trade after ${maxAttempts} attempts: ${validation!.reason}`,
+      };
     }
 
     // Execute trade if not HOLD
     if (decision.action !== 'HOLD') {
-      console.log(`🔄 Executing ${decision.action} trade...`);
-      await this.executeTrade(modelId, decision);
+      // Capture pre-trade position for SELL P/L
+      const preModel = await prisma.model.findUnique({
+        where: { id: modelId },
+        include: { portfolio: { include: { positions: true } } },
+      });
+      const prePos = preModel?.portfolio?.positions.find(p => p.ticker === decision.ticker);
+
+      const exec = await this.executeTrade(modelId, decision, simulatedTime);
+      
+      // Get updated portfolio after trade
+      const updatedModel = await prisma.model.findUnique({
+        where: { id: modelId },
+        include: {
+          portfolio: {
+            include: {
+              positions: true,
+            },
+          },
+        },
+      });
+
+      if (updatedModel?.portfolio) {
+        const cash = Number(updatedModel.portfolio.cashBalance);
+        const positionsValue = updatedModel.portfolio.positions.reduce(
+          (sum, pos) => sum + pos.shares * Number(pos.avgCost),
+          0
+        );
+        const totalValue = cash + positionsValue;
+        let line = `${blue('[TRADE]')} ${model.displayName}: ${decision.action} ${decision.shares} ${decision.ticker}`;
+        if (decision.action === 'SELL' && exec.status === 'FILLED' && exec.filledPrice && prePos) {
+          const realized = (exec.filledPrice - Number(prePos.avgCost)) * decision.shares;
+          const plText = `${realized >= 0 ? '+' : ''}₹${Math.abs(realized).toLocaleString('en-IN', { maximumFractionDigits: 0 })}`;
+          line += ` | P/L ${realized >= 0 ? green(plText) : red(plText)}`;
+        }
+        line += ` | Cash ₹${cash.toLocaleString('en-IN', { maximumFractionDigits: 0 })}`;
+        line += ` | Value ₹${totalValue.toLocaleString('en-IN', { maximumFractionDigits: 0 })}`;
+        line += ` | Positions: ${updatedModel.portfolio.positions.map(p => `${p.shares} ${p.ticker}`).join(', ') || 'None'}`;
+        console.log(line);
+        this.publisher?.publish('trade', {
+          modelId: model.id,
+          modelName: model.displayName,
+          action: decision.action,
+          ticker: decision.ticker,
+          shares: decision.shares,
+          leverage: decision.leverage ?? 1,
+          price: exec.filledPrice,
+          cash,
+          totalValue,
+          positions: updatedModel.portfolio.positions.map(p => ({ ticker: p.ticker, shares: p.shares })),
+        });
+      }
     } else {
-      console.log('⏸️  Holding - no trade executed');
+      const cash = Number(model.portfolio?.cashBalance || 0);
+      const positionsValue = model.portfolio?.positions.reduce(
+        (sum, pos) => sum + pos.shares * Number(pos.avgCost),
+        0
+      ) || 0;
+      const totalValue = cash + positionsValue;
+      console.log(
+        `[PORTFOLIO] ${model.displayName}: HOLD | ` +
+        `Cash ₹${cash.toLocaleString('en-IN', { maximumFractionDigits: 0 })} | ` +
+        `Value ₹${totalValue.toLocaleString('en-IN', { maximumFractionDigits: 0 })} | ` +
+        `Positions: ${model.portfolio?.positions.map(p => `${p.shares} ${p.ticker}`).join(', ') || 'None'}`
+      );
+      this.publisher?.publish('portfolio', {
+        modelId: model.id,
+        modelName: model.displayName,
+        cash,
+        totalValue,
+        positions: model.portfolio?.positions.map(p => ({ ticker: p.ticker, shares: p.shares })) || [],
+      });
     }
 
     // Create portfolio snapshot
@@ -194,7 +283,7 @@ export class TradingEngine {
     });
 
     if (portfolio) {
-      await this.portfolioCalc.createSnapshot(portfolio.id);
+      await this.portfolioCalc.createSnapshot(portfolio.id, simulatedTime);
     }
   }
 
@@ -237,17 +326,22 @@ export class TradingEngine {
       return { isValid: false, reason: 'Shares must be greater than 0' };
     }
 
-    // Validate BUY
+    // Validate BUY (supports optional leverage)
     if (decision.action === 'BUY') {
+      const allowedLeverages = [1, 5, 10, 20];
+      const leverage = decision.leverage ?? 1;
+      if (!allowedLeverages.includes(leverage)) {
+        return { isValid: false, reason: `Invalid leverage ${leverage}x. Allowed: 1, 5, 10, 20` };
+      }
       const currentPrice = await this.brokerService.getCurrentPrice(decision.ticker);
       const totalCost = currentPrice * decision.shares;
       const cashBalance = Number(model.portfolio.cashBalance);
+      const initialValue = Number(model.portfolio.initialValue);
+      const maxBorrow = (leverage - 1) * initialValue;
+      const newCash = cashBalance - totalCost;
 
-      if (totalCost > cashBalance) {
-        return {
-          isValid: false,
-          reason: `Insufficient cash: need ₹${totalCost.toFixed(2)}, have ₹${cashBalance.toFixed(2)}`,
-        };
+      if (newCash < -maxBorrow) {
+        return { isValid: false, reason: `Insufficient margin at ${leverage}x: borrowing exceeds limit (max borrow ₹${maxBorrow.toFixed(2)})` };
       }
 
       // Check position size limit
@@ -285,17 +379,22 @@ export class TradingEngine {
   /**
    * Execute a trade
    */
-  private async executeTrade(modelId: string, decision: TradeDecision): Promise<void> {
+  private async executeTrade(
+    modelId: string,
+    decision: TradeDecision,
+    simulatedTime?: Date
+  ): Promise<{ status: 'FILLED' | 'REJECTED'; filledPrice?: number }> {
     // Create trade record
     const trade = await prisma.trade.create({
       data: {
         modelId,
         ticker: decision.ticker!,
-        action: decision.action,
+        action: decision.action as 'BUY' | 'SELL',
         shares: decision.shares,
         price: 0, // Will update after fill
         totalValue: 0,
         status: 'PENDING',
+        ...(simulatedTime ? { createdAt: simulatedTime } : {}),
       },
     });
 
@@ -303,7 +402,7 @@ export class TradingEngine {
       // Submit order to broker
       const result: BrokerOrderResult = await this.brokerService.submitOrder({
         ticker: decision.ticker!,
-        action: decision.action,
+        action: decision.action as 'BUY' | 'SELL',
         shares: decision.shares,
       });
 
@@ -315,17 +414,16 @@ export class TradingEngine {
           totalValue: (result.filledPrice || 0) * decision.shares,
           status: result.status === 'COMPLETE' ? 'FILLED' : 'REJECTED',
           brokerOrderId: result.orderId,
-          executedAt: new Date(),
+          executedAt: simulatedTime ?? new Date(),
         },
       });
 
       if (result.status === 'COMPLETE' && result.filledPrice) {
-        // Update portfolio
+        // Update portfolio (silent)
         await this.updatePortfolio(modelId, decision, result.filledPrice);
-        console.log(`✅ Trade executed: ${decision.action} ${decision.shares} ${decision.ticker} @ ₹${result.filledPrice.toFixed(2)}`);
-      } else {
-        console.log(`❌ Trade rejected: ${result.orderId}`);
+        return { status: 'FILLED', filledPrice: result.filledPrice };
       }
+      return { status: 'REJECTED' };
     } catch (error) {
       // Mark trade as rejected
       await prisma.trade.update({

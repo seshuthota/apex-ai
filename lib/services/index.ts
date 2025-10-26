@@ -9,34 +9,29 @@ import { MockDataService } from './data-service.mock';
 import { BrokerService } from './broker-service';
 import { MockBrokerService } from './broker-service.mock';
 import { TradingEngine } from './trading-engine';
+import type { IDataService, IBrokerService } from '@/lib/types';
 
 // Determine if we should use mock services
 const useMockServices = process.env.USE_MOCK_SERVICES === 'true' || 
                         !process.env.ZERODHA_API_KEY ||
                         !process.env.KITE_API_KEY;
 
+// Singletons to keep state (mock price history etc.) consistent across calls
+const dataServiceInstance: IDataService = useMockServices ? new MockDataService() : new DataService();
+const brokerServiceInstance: IBrokerService = useMockServices ? new MockBrokerService() : new BrokerService();
+
 /**
  * Get Data Service (mock or real)
  */
-export function getDataService() {
-  if (useMockServices) {
-    console.log('📦 Using Mock Data Service');
-    return new MockDataService();
-  }
-  console.log('🔗 Using Real Data Service (Kite Connect)');
-  return new DataService();
+export function getDataService(): IDataService {
+  return dataServiceInstance;
 }
 
 /**
  * Get Broker Service (mock or real)
  */
-export function getBrokerService() {
-  if (useMockServices) {
-    console.log('📦 Using Mock Broker Service');
-    return new MockBrokerService();
-  }
-  console.log('🔗 Using Real Broker Service (Kite Connect)');
-  return new BrokerService();
+export function getBrokerService(): IBrokerService {
+  return brokerServiceInstance;
 }
 
 /**
@@ -61,3 +56,7 @@ export { MockBrokerService } from './broker-service.mock';
 export { PortfolioCalculator } from './portfolio-calculator';
 export { ModelManager } from './model-manager';
 export { TradingEngine } from './trading-engine';
+export * from '@/lib/market';
+export * from '@/lib/broker';
+export * from '@/lib/trading';
+export * from '@/lib/llm';

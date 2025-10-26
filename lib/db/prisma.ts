@@ -10,7 +10,9 @@ const globalForPrisma = globalThis as unknown as {
 export const prisma =
   globalForPrisma.prisma ??
   new PrismaClient({
-    log: process.env.NODE_ENV === 'development' ? ['query', 'error', 'warn'] : ['error'],
+    // Keep Prisma quiet in all environments; we only want our own app logs.
+    // If you ever need verbose Prisma logs, set explicitly when instantiating a client in that script.
+    log: ['error'],
   });
 
 if (process.env.NODE_ENV !== 'production') globalForPrisma.prisma = prisma;
